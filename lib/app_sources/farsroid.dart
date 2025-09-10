@@ -4,11 +4,22 @@ import 'package:html/parser.dart';
 import 'package:obtainium/app_sources/html.dart';
 import 'package:obtainium/custom_errors.dart';
 import 'package:obtainium/providers/source_provider.dart';
+import 'package:obtainium/components/generated_form.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 class Farsroid extends AppSource {
   Farsroid() {
     hosts = ['farsroid.com'];
     name = 'Farsroid';
+    additionalSourceAppSpecificSettingFormItems = [
+      [
+        GeneratedFormSwitch(
+          'fallbackToOlderReleases',
+          label: tr('fallbackToOlderReleases'),
+          defaultValue: false,
+        ),
+      ],
+    ];
   }
 
   @override
@@ -29,6 +40,7 @@ class Farsroid extends AppSource {
     String standardUrl,
     Map<String, dynamic> additionalSettings,
   ) async {
+    additionalSettings['skipSort'] = true;
     String appName = Uri.parse(standardUrl).pathSegments.last;
 
     var res = await sourceRequest(standardUrl, additionalSettings);
@@ -60,12 +72,29 @@ class Farsroid extends AppSource {
     var apkLinks =
         (await grabLinksCommon(html2, res2.request!.url, additionalSettings))
             .map((l) => MapEntry(Uri.parse(l.key).pathSegments.last, l.key))
-            .where(
-              (l) => l.key.toLowerCase().startsWith(
-                '$appName-$version'.toLowerCase(),
+            .toList();
+
+    if (apkLinks.isEmpty) {
+      throw NoAPKError();
+    }
+
+    var fileNameSplitter = r'[-+()]+';
+    var appName2 = apkLinks.first.key.split(RegExp(fileNameSplitter)).first;
+    apkLinks = apkLinks.where(
+              (l) => l.key.startsWith(
+                RegExp('${getSourceRegex([appName2])}$fileNameSplitter'),
               ),
             )
             .toList();
+    
+    if (additionalSettings['fallbackToOlderReleases'] == false) {
+      apkLinks = apkLinks.where(
+              (l) => l.key.contains(
+                RegExp('$fileNameSplitter${getSourceRegex([version])}$fileNameSplitter'),
+              ),
+            )
+            .toList();
+    }
 
     if (apkLinks.isEmpty) {
       throw NoAPKError();
