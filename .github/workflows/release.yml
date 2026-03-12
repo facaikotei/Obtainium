@@ -43,7 +43,23 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Build APKs
+        env:
+          STORE_FILE_BASE64: ${{ secrets.STORE_FILE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
+          cd android
+          wget https://raw.githubusercontent.com/aosp-mirror/platform_build/refs/heads/main/target/product/security/testkey.pk8
+          wget https://raw.githubusercontent.com/aosp-mirror/platform_build/refs/heads/main/target/product/security/testkey.x509.pem
+          openssl pkcs8 -inform DER -nocrypt -in testkey.pk8 -out testkey.pem
+          openssl pkcs12 -export -in testkey.x509.pem -inkey testkey.pem -out testkey.keystore -password pass:android -name androiddebugkey
+          echo "${STORE_FILE_BASE64:-$(base64 testkey.keystore)}" | base64 -d > release.keystore
+          echo "storePassword=${STORE_PASSWORD:-android}" >> key.properties
+          echo "keyPassword=${KEY_PASSWORD:-android}" >> key.properties
+          echo "keyAlias=${KEY_ALIAS:-androiddebugkey}" >> key.properties
+          echo "storeFile=../release.keystore" >> key.properties
+          cd ..
           sed -i 's/signingConfig = signingConfigs.getByName("release")//g' android/app/build.gradle.kts
           flutter build apk --flavor normal && flutter build apk --split-per-abi --flavor normal
           for file in build/app/outputs/flutter-apk/app-*normal*.apk*; do mv "$file" "${file//-normal/}"; done
